@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Interactive Neuron Lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f8f7f4;
+            --panel-bg: #ffffff;
+            --border-color: #e5e7eb;
+            --primary-color: #4f46e5;
+            --primary-light: #e0e7ff;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --font-main: 'Manrope', sans-serif;
+        }
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 1.25rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            transition: all 0.3s ease-in-out;
+        }
+        .data-input {
+            background-color: #f9fafb;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        .data-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px var(--primary-light);
+        }
+        .control-btn {
+            transition: all 0.2s ease-in-out;
+            border-radius: 0.75rem;
+            font-weight: 600;
+        }
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 14px rgba(50,50,93,.1), 0 3px 6px rgba(0,0,0,.08);
+        }
+        .task-radio:checked + label {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+        }
+        .axis-label, .tick text {
+            font-size: 0.8rem;
+            fill: var(--text-secondary);
+        }
+        .domain, .tick line { stroke: var(--border-color); }
+        .katex { font-size: 1.1em; }
+        
+        #math-section { max-height: 0; overflow: hidden; transition: max-height 0.7s ease-in-out; }
+        #math-section.open { max-height: 2500px; }
+
+        /* Neuron Diagram Animations */
+        .neuron-pulse { animation: neuronPulse 0.7s ease-out; }
+        @keyframes neuronPulse {
+            0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); }
+        }
+        .data-flow { stroke-dasharray: 4; stroke-dashoffset: 8; animation: dataFlow 1.5s linear infinite; }
+        @keyframes dataFlow { to { stroke-dashoffset: 0; } }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-screen-2xl mx-auto">
+        <header class="text-center mb-8 md:mb-12">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-800">The Interactive Neuron Lab</h1>
+            <p class="text-lg md:text-xl text-gray-500 mt-2">Visualize Gradient Descent in Real-Time</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <div class="xl:col-span-3 flex flex-col gap-6">
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">1. Select Task</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="radio" id="regression" name="task" value="regression" class="hidden task-radio" checked>
+                        <label for="regression" class="text-center py-3 px-2 rounded-xl border border-gray-300 cursor-pointer transition-all duration-300 font-semibold">Regression</label>
+                        <input type="radio" id="classification" name="task" value="classification" class="hidden task-radio">
+                        <label for="classification" class="text-center py-3 px-2 rounded-xl border border-gray-300 cursor-pointer transition-all duration-300 font-semibold">Classification</label>
+                    </div>
+                </div>
+
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">2. Input Data</h2>
+                    <div id="data-input-container" class="space-y-3"></div>
+                </div>
+
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">3. Set Parameters</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="initialWeight" class="text-sm font-semibold">Initial Weight (w)</label>
+                            <input type="number" id="initialWeight" value="0.5" step="0.1" class="w-full mt-1 p-2 data-input">
+                        </div>
+                        <div>
+                            <label for="initialBias" class="text-sm font-semibold">Initial Bias (b)</label>
+                            <input type="number" id="initialBias" value="0" step="0.1" class="w-full mt-1 p-2 data-input">
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label for="learningRate" class="text-sm font-semibold">Learning Rate (α): <span id="lr-value" class="font-bold text-indigo-600">0.01</span></label>
+                        <input type="range" id="learningRate" min="0.001" max="0.3" step="0.001" value="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="xl:col-span-6 flex flex-col gap-6">
+                <div class="panel p-5 flex-grow">
+                    <h2 class="text-xl font-bold mb-4">Live Data Visualization</h2>
+                    <div id="visualization" class="w-full h-full min-h-[400px] bg-gray-50 rounded-lg"></div>
+                </div>
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">4. Train Neuron</h2>
+                    <div class="grid grid-cols-3 gap-3">
+                        <button id="trainStepBtn" class="control-btn bg-blue-600 hover:bg-blue-700 text-white py-3 px-4">Step</button>
+                        <button id="autoTrainBtn" class="control-btn bg-green-500 hover:bg-green-600 text-white py-3 px-4">Auto-Train</button>
+                        <button id="resetBtn" class="control-btn bg-red-500 hover:bg-red-600 text-white py-3 px-4">Reset</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="xl:col-span-3 flex flex-col gap-6">
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">Live Neuron Diagram</h2>
+                    <div id="neuron-diagram" class="w-full h-56"></div>
+                </div>
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">Training Metrics</h2>
+                    <div class="space-y-3 text-lg font-medium">
+                        <p>Epoch: <span id="epoch-value" class="font-bold text-blue-600 float-right">0</span></p>
+                        <p>Loss: <span id="loss-value" class="font-bold text-red-600 float-right">N/A</span></p>
+                        <p>Weight (w): <span id="weight-value" class="font-bold text-green-600 float-right">0.5</span></p>
+                        <p>Bias (b): <span id="bias-value" class="font-bold text-yellow-500 float-right">0.0</span></p>
+                    </div>
+                </div>
+                <div class="panel p-5">
+                    <h2 class="text-xl font-bold mb-4">Predictions (ŷ)</h2>
+                    <div id="predictions-container" class="text-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel p-6 md:p-8 mt-8 max-w-5xl mx-auto">
+            <h2 id="math-toggle" class="text-2xl md:text-3xl font-bold text-center cursor-pointer group">
+                The Math Behind the Magic 
+                <span class="text-indigo-500 text-lg transition-transform duration-300 inline-block group-hover:translate-x-1">(Click to Expand)</span>
+            </h2>
+            <div id="math-section" class="mt-6 text-gray-700 space-y-8">
+                <!-- Step 1 -->
+                <div class="step">
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Step 1: The Forward Pass (Making a Guess)</h3>
+                    <p><strong>What:</strong> The neuron makes a prediction, `ŷ` (y-hat), for each input `x` using its current weight and bias.</p>
+                    <p><strong>Why:</strong> This is the model's attempt to replicate the true output `y`. We need this prediction to see how "wrong" the neuron currently is.</p>
+                    <p><strong>How:</strong> It uses a simple linear equation. For classification, this is passed through a sigmoid function `σ(z)` to squash the output between 0 and 1.</p>
+                    <div class="formula-box" id="formula-step1"></div>
+                    <p class="mt-2"><strong>Example (first data point x=1):</strong> With `w=0.5` and `b=0`, the neuron predicts `ŷ = (0.5 * 1) + 0 = 0.5`.</p>
+                </div>
+                <hr>
+                <!-- Step 2 -->
+                <div class="step">
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Step 2: The Loss Function (Measuring Error)</h3>
+                    <p><strong>What:</strong> A function that calculates a single number representing how bad the model's predictions were across all data points.</p>
+                    <p><strong>Why:</strong> It gives us a concrete score for our model's performance. The goal of training is to minimize this score.</p>
+                    <p><strong>How:</strong> For regression, we use Mean Squared Error (MSE), which averages the squared difference between the true `y` and predicted `ŷ`.</p>
+                    <div class="formula-box" id="formula-step2"></div>
+                    <p class="mt-2"><strong>Example (all data):</strong> The initial MSE loss is `2.125`. Our goal is to make this number as close to 0 as possible.</p>
+                </div>
+                <hr>
+                <!-- Step 3 -->
+                <div class="step">
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Step 3: Gradient Descent (Finding the Path Downhill)</h3>
+                    <p><strong>What:</strong> The core learning algorithm. It calculates the "slope" (gradient) of the loss with respect to `w` and `b`.</p>
+                    <p><strong>Why:</strong> The gradient points "uphill" towards higher loss. By moving in the *opposite* direction, we can go "downhill" and reduce the loss.</p>
+                    <p><strong>How:</strong> We use calculus (partial derivatives) to find how a tiny change in `w` or `b` affects the total loss.</p>
+                    <div class="formula-box" id="formula-step3-w"></div>
+                    <div class="formula-box" id="formula-step3-b"></div>
+                    <p class="mt-2"><strong>Example:</strong> The initial gradient for `w` is `-7.0` and for `b` is `-2.5`. Both are negative, telling us we need to *increase* `w` and `b` to decrease the loss.</p>
+                </div>
+                <hr>
+                <!-- Step 4 -->
+                <div class="step">
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Step 4: Parameter Update (Taking the Step)</h3>
+                    <p><strong>What:</strong> We adjust `w` and `b` based on their gradients and the learning rate.</p>
+                    <p><strong>Why:</strong> This is the actual "learning" step where the neuron improves itself. By repeating this, it slowly converges to the best possible `w` and `b` values.</p>
+                    <p><strong>How:</strong> We subtract the gradient (multiplied by the learning rate `α`) from the old parameter value.</p>
+                    <div class="formula-box" id="formula-step4-w"></div>
+                    <div class="formula-box" id="formula-step4-b"></div>
+                    <p class="mt-2"><strong>Example (with α=0.01):</strong> The new weight becomes `w = 0.5 - (0.01 * -7.0) = 0.57`.</p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center mt-12 py-4 text-gray-500">
+            <p>Made with ❤️ by <a href="https://linkedin.com/in/vanshcodeworks" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-500 transition">vanshcodeworks</a></p>
+        </footer>
+    </div>
+
+    <script>
+        window.onload = () => {
+            // --- STATE & CONFIG ---
+            const MAX_POINTS = 5;
+            let state = {
+                task: 'regression', data: [], weight: 0.5, bias: 0.0,
+                learningRate: 0.01, epoch: 0, isAutoTraining: false,
+            };
+
+            // --- DOM ELEMENTS ---
+            const dom = {
+                taskRadios: document.querySelectorAll('input[name="task"]'),
+                dataInputContainer: document.getElementById('data-input-container'),
+                initialWeightInput: document.getElementById('initialWeight'),
+                initialBiasInput: document.getElementById('initialBias'),
+                learningRateSlider: document.getElementById('learningRate'),
+                lrValueSpan: document.getElementById('lr-value'),
+                trainStepBtn: document.getElementById('trainStepBtn'),
+                autoTrainBtn: document.getElementById('autoTrainBtn'),
+                resetBtn: document.getElementById('resetBtn'),
+                visContainer: document.getElementById('visualization'),
+                neuronContainer: document.getElementById('neuron-diagram'),
+                predictionsContainer: document.getElementById('predictions-container'),
+                epochValue: document.getElementById('epoch-value'),
+                lossValue: document.getElementById('loss-value'),
+                weightValue: document.getElementById('weight-value'),
+                biasValue: document.getElementById('bias-value'),
+                mathToggle: document.getElementById('math-toggle'),
+                mathSection: document.getElementById('math-section'),
+            };
+
+            // --- D3 VISUALIZATION & MATHJAX ---
+            let vis = {};
+            let neuronVis = {};
+
+            function renderMathFormulas() {
+                const formulas = {
+                    'formula-step1': '\\hat{y} = w \\cdot x + b',
+                    'formula-step2': 'L = \\frac{1}{N} \\sum_{i=1}^{N} (y_i - \\hat{y}_i)^2',
+                    'formula-step3-w': '\\frac{\\partial L}{\\partial w} = -\\frac{2}{N} \\sum x_i(y_i - \\hat{y}_i)',
+                    'formula-step3-b': '\\frac{\\partial L}{\\partial b} = -\\frac{2}{N} \\sum (y_i - \\hat{y}_i)',
+                    'formula-step4-w': 'w_{new} = w_{old} - \\alpha \\cdot \\frac{\\partial L}{\\partial w}',
+                    'formula-step4-b': 'b_{new} = b_{old} - \\alpha \\cdot \\frac{\\partial L}{\\partial b}',
+                };
+                for (const id in formulas) {
+                    katex.render(formulas[id], document.getElementById(id), { throwOnError: false, displayMode: true });
+                }
+            }
+
+            function setupMainVisualization() {
+                dom.visContainer.innerHTML = '';
+                const bounds = dom.visContainer.getBoundingClientRect();
+                const margin = { top: 20, right: 20, bottom: 40, left: 40 };
+                vis.width = bounds.width - margin.left - margin.right;
+                vis.height = bounds.height - margin.top - margin.bottom;
+
+                vis.svg = d3.select(dom.visContainer).append("svg")
+                    .attr("width", bounds.width).attr("height", bounds.height)
+                    .append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const xDomain = d3.extent(state.data, d => d.x);
+                const yDomain = state.task === 'classification' ? [-0.2, 1.2] : d3.extent(state.data, d => d.y);
+                
+                vis.xScale = d3.scaleLinear().domain([Math.min(0, xDomain[0] || 0) - 1, Math.max(10, xDomain[1] || 10) + 1]).range([0, vis.width]);
+                vis.yScale = d3.scaleLinear().domain([Math.min(0, yDomain[0] || 0) - 1, Math.max(10, yDomain[1] || 10) + 1]).range([vis.height, 0]);
+
+                vis.svg.append("g").attr("class", "x-axis").attr("transform", `translate(0,${vis.height})`).call(d3.axisBottom(vis.xScale));
+                vis.svg.append("g").attr("class", "y-axis").call(d3.axisLeft(vis.yScale));
+                
+                vis.svg.append("line").attr("class", "regression-line").style("stroke", "#6366f1").style("stroke-width", 3).style("opacity", 0).style("transition", "all 0.3s ease");
+                vis.svg.append("line").attr("class", "decision-boundary").style("stroke", "#f59e0b").style("stroke-width", 3).style("stroke-dasharray", "6,6").style("opacity", 0).style("transition", "all 0.3s ease");
+            }
+            
+            function setupNeuronDiagram() {
+                dom.neuronContainer.innerHTML = '';
+                const bounds = dom.neuronContainer.getBoundingClientRect();
+                const width = bounds.width, height = bounds.height;
+                const svg = d3.select(dom.neuronContainer).append("svg").attr("width", width).attr("height", height);
+
+                const neuronX = width / 2, neuronY = height / 2 + 10;
+                
+                svg.append("path").attr("d", `M 20,${height/4} Q ${neuronX-20},${neuronY-20} ${neuronX-42},${neuronY-10}`).attr("stroke", "#9ca3af").attr("fill", "none").attr("stroke-width", 2).attr("class", "data-flow");
+                svg.append("path").attr("d", `M ${neuronX},20 Q ${neuronX},${neuronY-20} ${neuronX},${neuronY-42}`).attr("stroke", "#9ca3af").attr("fill", "none").attr("stroke-width", 2).attr("class", "data-flow");
+                svg.append("path").attr("d", `M ${neuronX+42},${neuronY} Q ${neuronX+60},${neuronY} ${width-20},${neuronY}`).attr("stroke", "#9ca3af").attr("fill", "none").attr("stroke-width", 2);
+
+                neuronVis.xLabel = svg.append("text").attr("x", 15).attr("y", height/4).text("x").attr("fill", "#374151").style("font-weight", "600");
+                neuronVis.wLabel = svg.append("text").attr("x", neuronX - 70).attr("y", neuronY - 40).text(`w=${state.weight.toFixed(2)}`).attr("fill", "#16a34a").style("font-weight", "600");
+                neuronVis.bLabel = svg.append("text").attr("x", neuronX - 15).attr("y", 15).text(`b=${state.bias.toFixed(2)}`).attr("fill", "#d97706").style("font-weight", "600");
+                neuronVis.yHatLabel = svg.append("text").attr("x", width - 50).attr("y", neuronY + 5).text("ŷ = ?").attr("fill", "#8b5cf6").style("font-weight", "600");
+
+                neuronVis.neuronCircle = svg.append("circle").attr("cx", neuronX).attr("cy", neuronY).attr("r", 40).attr("fill", "#4f46e5");
+                neuronVis.formulaText = svg.append("text").attr("x", neuronX).attr("y", neuronY + 5).text("ŷ = w·x+b").attr("fill", "white").attr("text-anchor", "middle").style("font-size", "12px").style("font-weight", "bold");
+            }
+
+            const sigmoid = (z) => 1 / (1 + Math.exp(-z));
+            const forwardPass = (x) => state.task === 'regression' ? (state.weight * x + state.bias) : sigmoid(state.weight * x + state.bias);
+
+            function calculateLoss() {
+                if (state.data.length === 0) return 0;
+                const epsilon = 1e-9;
+                const totalError = state.data.reduce((acc, point) => {
+                    const y_hat = forwardPass(point.x);
+                    const error = state.task === 'regression' ? Math.pow(point.y - y_hat, 2) : -(point.y * Math.log(y_hat + epsilon) + (1 - point.y) * Math.log(1 - y_hat + epsilon));
+                    return acc + error;
+                }, 0);
+                return totalError / state.data.length;
+            }
+
+            function calculateGradients() {
+                if (state.data.length === 0) return { dW: 0, dB: 0 };
+                let dW = 0, dB = 0;
+                state.data.forEach(point => {
+                    const error = forwardPass(point.x) - point.y;
+                    dW += error * point.x;
+                    dB += error;
+                });
+                return { dW: dW / state.data.length, dB: dB / state.data.length };
+            }
+
+            function updateParameters(gradients) {
+                state.weight -= state.learningRate * gradients.dW;
+                state.bias -= state.learningRate * gradients.dB;
+            }
+
+            function updateUI() {
+                const loss = calculateLoss();
+                dom.epochValue.textContent = state.epoch;
+                dom.lossValue.textContent = isNaN(loss) ? 'Error' : loss.toFixed(4);
+                dom.weightValue.textContent = state.weight.toFixed(4);
+                dom.biasValue.textContent = state.bias.toFixed(4);
+                
+                updatePredictionsTable();
+                updateMainVisualization();
+                updateNeuronDiagram();
+            }
+            
+            function updatePredictionsTable() {
+                dom.predictionsContainer.innerHTML = '';
+                const table = document.createElement('table');
+                table.className = 'w-full text-left';
+                table.innerHTML = `<thead><tr><th class="p-1 font-semibold">X</th><th class="p-1 font-semibold">Y</th><th class="p-1 font-semibold">ŷ</th></tr></thead>`;
+                const tbody = document.createElement('tbody');
+                state.data.forEach(point => {
+                    const y_hat = forwardPass(point.x);
+                    const row = document.createElement('tr');
+                    row.className = 'border-t border-gray-200';
+                    row.innerHTML = `<td class="p-1 font-mono">${point.x}</td><td class="p-1 font-mono">${point.y}</td><td class="p-1 font-mono text-indigo-600 font-medium">${y_hat.toFixed(3)}</td>`;
+                    tbody.appendChild(row);
+                });
+                table.appendChild(tbody);
+                dom.predictionsContainer.appendChild(table);
+            }
+
+            function updateMainVisualization() {
+                if (!vis.svg) return;
+                const points = vis.svg.selectAll(".data-point").data(state.data, d => d.id);
+                points.enter().append("circle").attr("class", "data-point").attr("r", 7)
+                    .merge(points)
+                    .attr("cx", d => vis.xScale(d.x)).attr("cy", d => vis.yScale(d.y))
+                    .attr("fill", d => state.task === 'classification' ? (d.y === 1 ? '#ef4444' : '#3b82f6') : '#10b981')
+                    .attr("stroke", "#ffffff").attr("stroke-width", 2);
+                points.exit().remove();
+
+                if (state.task === 'regression') {
+                    vis.svg.select(".regression-line").style("opacity", 1);
+                    vis.svg.select(".decision-boundary").style("opacity", 0);
+                    const x_coords = vis.xScale.domain();
+                    vis.svg.select(".regression-line").attr("x1", vis.xScale(x_coords[0])).attr("y1", vis.yScale(state.weight * x_coords[0] + state.bias))
+                        .attr("x2", vis.xScale(x_coords[1])).attr("y2", vis.yScale(state.weight * x_coords[1] + state.bias));
+                } else {
+                    vis.svg.select(".regression-line").style("opacity", 0);
+                    vis.svg.select(".decision-boundary").style("opacity", 1);
+                    const boundaryX = state.weight !== 0 ? -state.bias / state.weight : (state.bias > 0 ? -Infinity : Infinity);
+                    vis.svg.select(".decision-boundary").attr("x1", vis.xScale(boundaryX)).attr("y1", 0).attr("x2", vis.xScale(boundaryX)).attr("y2", vis.height);
+                }
+            }
+            
+            function updateNeuronDiagram() {
+                if (!neuronVis.wLabel) return;
+                neuronVis.wLabel.text(`w=${state.weight.toFixed(2)}`);
+                neuronVis.bLabel.text(`b=${state.bias.toFixed(2)}`);
+                const avgX = state.data.length > 0 ? d3.mean(state.data, d => d.x) : 1;
+                const avgYhat = forwardPass(avgX);
+                neuronVis.yHatLabel.text(`ŷ=${avgYhat.toFixed(2)}`);
+                neuronVis.formulaText.text(state.task === 'regression' ? "ŷ = w·x+b" : "ŷ = σ(w·x+b)");
+            }
+
+            function trainStep() {
+                if (state.data.length === 0) return;
+                const gradients = calculateGradients();
+                updateParameters(gradients);
+                state.epoch++;
+                updateUI();
+                if (neuronVis.neuronCircle) {
+                    neuronVis.neuronCircle.classed('neuron-pulse', false);
+                    void neuronVis.neuronCircle.node().offsetWidth;
+                    neuronVis.neuronCircle.classed('neuron-pulse', true);
+                }
+            }
+            
+            function toggleAutoTrain() {
+                state.isAutoTraining = !state.isAutoTraining;
+                dom.autoTrainBtn.textContent = state.isAutoTraining ? 'Stop' : 'Auto-Train';
+                dom.autoTrainBtn.classList.toggle('bg-green-500', !state.isAutoTraining);
+                dom.autoTrainBtn.classList.toggle('hover:bg-green-600', !state.isAutoTraining);
+                dom.autoTrainBtn.classList.toggle('bg-yellow-500', state.isAutoTraining);
+                dom.autoTrainBtn.classList.toggle('hover:bg-yellow-600', state.isAutoTraining);
+                if (state.isAutoTraining) autoTrainLoop();
+            }
+            
+            function autoTrainLoop() {
+                if (!state.isAutoTraining) return;
+                trainStep();
+                requestAnimationFrame(autoTrainLoop);
+            }
+
+            function reset() {
+                if (state.isAutoTraining) toggleAutoTrain();
+                state.epoch = 0;
+                state.weight = parseFloat(dom.initialWeightInput.value);
+                state.bias = parseFloat(dom.initialBiasInput.value);
+                readDataFromInputs();
+                setupMainVisualization();
+                setupNeuronDiagram();
+                updateUI();
+            }
+            
+            function fullReset() {
+                if (state.isAutoTraining) toggleAutoTrain();
+                state.task = document.querySelector('input[name="task"]:checked').value;
+                createDataInputs();
+                reset();
+            }
+
+            function createDataInputs() {
+                dom.dataInputContainer.innerHTML = '';
+                const defaultData = state.task === 'regression' 
+                    ? [{x:1, y:1}, {x:2, y:3}, {x:3, y:2}, {x:4, y:4}]
+                    : [{x:1, y:0}, {x:2, y:0}, {x:5, y:1}, {x:6, y:1}];
+
+                for (let i = 0; i < MAX_POINTS; i++) {
+                    const point = defaultData[i] || {x: '', y: ''};
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center justify-between space-x-2';
+                    div.innerHTML = `<label class="font-semibold text-gray-600">P${i+1}</label>
+                        <div class="flex items-center gap-2">
+                        <label class="text-sm">X:</label><input type="number" class="data-input x-input w-20 p-1.5" value="${point.x}">
+                        <label class="text-sm">Y:</label><input type="number" class="data-input y-input w-20 p-1.5" value="${point.y}" ${state.task === 'classification' ? 'min="0" max="1" step="1"' : ''}>
+                        </div>`;
+                    dom.dataInputContainer.appendChild(div);
+                }
+                document.querySelectorAll('.x-input, .y-input').forEach(input => input.addEventListener('change', reset));
+            }
+
+            function readDataFromInputs() {
+                state.data = [];
+                const xInputs = document.querySelectorAll('.x-input');
+                const yInputs = document.querySelectorAll('.y-input');
+                for (let i = 0; i < MAX_POINTS; i++) {
+                    const x = parseFloat(xInputs[i].value);
+                    const y = parseFloat(yInputs[i].value);
+                    if (!isNaN(x) && !isNaN(y)) state.data.push({ id: i, x, y });
+                }
+            }
+
+            // --- EVENT LISTENERS ---
+            dom.trainStepBtn.addEventListener('click', trainStep);
+            dom.autoTrainBtn.addEventListener('click', toggleAutoTrain);
+            dom.resetBtn.addEventListener('click', reset);
+            dom.taskRadios.forEach(radio => radio.addEventListener('change', fullReset));
+            dom.learningRateSlider.addEventListener('input', (e) => {
+                state.learningRate = parseFloat(e.target.value);
+                dom.lrValueSpan.textContent = state.learningRate.toFixed(3);
+            });
+            dom.initialWeightInput.addEventListener('change', reset);
+            dom.initialBiasInput.addEventListener('change', reset);
+            dom.mathToggle.addEventListener('click', () => dom.mathSection.classList.toggle('open'));
+            window.addEventListener('resize', () => {
+                setupMainVisualization();
+                setupNeuronDiagram();
+                updateUI();
+            });
+
+            // --- INITIALIZATION ---
+            renderMathFormulas();
+            fullReset();
+        };
+    </script>
+</body>
+</html>
